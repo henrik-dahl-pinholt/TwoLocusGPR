@@ -23,7 +23,7 @@ jobs:
           python-version: "3.10"
           activate-environment: two-locus-gpr
           environment-file: none
-          miniforge-variant: Mambaforge
+          miniforge-variant: Miniforge3
           use-mamba: true
 
       - name: Create env and install deps
