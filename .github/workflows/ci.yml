@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          python-version: "3.10"
+          activate-environment: two-locus-gpr
+          environment-file: none
+          miniforge-variant: Mambaforge
+          use-mamba: true
+
+      - name: Create env and install deps
+        run: |
+          mamba create -n two-locus-gpr -y python=3.10
+          mamba install -n two-locus-gpr -y pip
+          conda run -n two-locus-gpr pip install -r requirements.txt
+
+      - name: Show versions
+        run: |
+          conda run -n two-locus-gpr python - <<'PY'
+          import sys, jax, numpy, scipy
+          print('Python', sys.version)
+          print('JAX', jax.__version__)
+          print('NumPy', numpy.__version__)
+          print('SciPy', scipy.__version__)
+          PY
+
+      - name: Run tests (CPU backend)
+        run: conda run -n two-locus-gpr pytest --jax-backend=cpu
