@@ -359,7 +359,8 @@ def fit_msd(
         corrs_model = MSDfunc(x) # (max_lag+1,ndims)
 
         diff = data_term - corrs_model # (max_lag+1,ndims)
-        z = jax.scipy.linalg.solve(L, diff.T, lower=True) # (ndims, max_lag+1)
+        # solve per-dim with explicit last axis to avoid JAX 1D solve deprecation
+        z = jax.scipy.linalg.solve(L, diff.T[..., None], lower=True).squeeze(-1) # (ndims, max_lag+1)
         val = 0.5 * jnp.vecdot(z, z).sum()
         # if nan or inf return large value
         return jnp.where(jnp.isfinite(val), val, 1e10)
