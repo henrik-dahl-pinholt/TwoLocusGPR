@@ -13,6 +13,8 @@ from tqdm.auto import tqdm
 
 import utils
 
+jax.config.update("jax_enable_x64", True)
+
 
 def bootstrap_MSD(arr_dat, block_size, nsamples=10_000, kind="track"):
     """Bootstrap MSD covariance across trajectories or blocks.
@@ -38,16 +40,16 @@ def bootstrap_MSD(arr_dat, block_size, nsamples=10_000, kind="track"):
     ntraj = arr_dat.shape[0]
     T = arr_dat.shape[1]
     nblocks = T // block_size + 1
-    lags = jnp.arange(1,block_size)
+    lags = jnp.arange(1, block_size)
     ndims = arr_dat.shape[2]
 
-    if kind=="block":
+    if kind == "block":
+
         def get_maxind(arr):
             for i in range(len(arr) - 1, -1, -1):
                 if not np.any(np.isnan(arr[i])):
                     return i - block_size + 1
             return arr
-
 
         max_inds = jnp.array([get_maxind(arr) for arr in arr_dat])
         # generate mask of nans to generate varying lengths in the final output
@@ -70,22 +72,21 @@ def bootstrap_MSD(arr_dat, block_size, nsamples=10_000, kind="track"):
             data_sample = arr_dat[traj_ind[:, None], aranges]
             return data_sample
 
-
         @jax.jit
         def sample_experiment(key):
             keys = jax.random.split(key, (nblocks, ntraj))
             blocks = jax.vmap(sample_blocks)(keys).transpose(
-                1, 0, 2,3
+                1, 0, 2, 3
             )  # (ntraj, nblocks, block_size, ndims)
             exp = blocks.reshape(ntraj, nblocks * block_size, ndims)[:, :T]
             output = exp * output_mask
             return output
+
     else:  # kind=="track"
+
         @jax.jit
         def sample_experiment(key):
-            traj_inds = jax.random.randint(
-                key, shape=(ntraj,), minval=0, maxval=ntraj
-            )
+            traj_inds = jax.random.randint(key, shape=(ntraj,), minval=0, maxval=ntraj)
             return arr_dat[traj_inds]
 
     key = jax.random.PRNGKey(np.random.randint(0, 1e6))
@@ -93,33 +94,33 @@ def bootstrap_MSD(arr_dat, block_size, nsamples=10_000, kind="track"):
     @jax.jit
     def scan(carry, key):
         n, mean, cov = carry
- 
 
-        bootstrap_sample = sample_experiment(key) # (ntraj,T,ndims)
+        bootstrap_sample = sample_experiment(key)  # (ntraj,T,ndims)
 
         # compute acf
-        result = utils.msd(bootstrap_sample, lags)[:block_size] # (block_size,ndims)
-        track_avg = 2*jnp.nanmean(bootstrap_sample**2,axis=(0,1)) # (ndims,)
-        result = jnp.concatenate([ result,track_avg[None, :]], axis=0)  # (block_size+1,ndims)
+        result = utils.msd(bootstrap_sample, lags)[:block_size]  # (block_size,ndims)
+        track_avg = 2 * jnp.nanmean(bootstrap_sample**2, axis=(0, 1))  # (ndims,)
+        result = jnp.concatenate(
+            [result, track_avg[None, :]], axis=0
+        )  # (block_size+1,ndims)
         # update state
         n += 1
         newmean = mean + (result - mean) / n
-        newcov = cov + (result - mean)[:, None] * (result - newmean)[None, :] 
+        newcov = cov + (result - mean)[:, None] * (result - newmean)[None, :]
         return (n, newmean, newcov), result
 
     init_carry = (
         0,
-        jnp.zeros((block_size , ndims)),
-        jnp.zeros((block_size , block_size , ndims)),
+        jnp.zeros((block_size, ndims)),
+        jnp.zeros((block_size, block_size, ndims)),
     )
-     
+
     for i in tqdm(list(range(nsamples))):
         key, subkey = jax.random.split(key)
         init_carry, _ = scan(init_carry, subkey)
     n, mean, cov = init_carry
     covariance_matrix = cov / (n - 1)
     return covariance_matrix, mean
-
 
 
 def _profile_one_param(
@@ -276,7 +277,6 @@ def _make_restricted(loss, loss_grad, hvp, x_full0, fix_idx, fix_val_log):
     return free_idx, assemble_full, f_red, g_red, hvp_red
 
 
-
 def fit_msd(
     arr_dat,
     init_guess,
@@ -327,57 +327,58 @@ def fit_msd(
         Final log-likelihoods (negative loss) per attempt.
     """
 
-    lags = jnp.arange(1,max_lag)
-    covar_matrix, _ = bootstrap_MSD(arr_dat, max_lag, nsamples=nsamples, kind=bootstrap_method) # (max_lag+1,max_lag+1,ndims)
+    lags = jnp.arange(1, max_lag)
+    covar_matrix, _ = bootstrap_MSD(
+        arr_dat, max_lag, nsamples=nsamples, kind=bootstrap_method
+    )  # (max_lag+1,max_lag+1,ndims)
 
-    corrs = utils.msd(arr_dat, lags) # (max_lag,ndims)
-    
-    symmetrized_covar = 0.5 * (covar_matrix + covar_matrix.transpose((1,0,2))) + 1e-6 * jnp.eye(
-        len(covar_matrix)
-    )[..., None]
-    
-    L = jnp.linalg.cholesky(symmetrized_covar.transpose((2,0,1)))  # (ndims,max_lag+1,max_lag+1)
-    
-    data_term = jnp.concatenate([corrs,jnp.array([2*jnp.nanmean(arr_dat**2,axis=(0,1))])]) # (max_lag+1,ndims)
+    corrs = utils.msd(arr_dat, lags)  # (max_lag,ndims)
+
+    symmetrized_covar = (
+        0.5 * (covar_matrix + covar_matrix.transpose((1, 0, 2)))
+        + 1e-6 * jnp.eye(len(covar_matrix))[..., None]
+    )
+
+    L = jnp.linalg.cholesky(
+        symmetrized_covar.transpose((2, 0, 1))
+    )  # (ndims,max_lag+1,max_lag+1)
+
+    data_term = jnp.concatenate(
+        [corrs, jnp.array([2 * jnp.nanmean(arr_dat**2, axis=(0, 1))])]
+    )  # (max_lag+1,ndims)
 
     times = dt * lags
     ndims = arr_dat.shape[2]
-    
+
     @jax.jit
     def MSDfunc(params):
         noises = jnp.exp(params[-ndims:])
         params = jnp.exp(params[:-ndims])
-        msd = msd_function(times,params)
-        distance = msd_function(1e9,params)
-        msd_part = jnp.concatenate([ msd,jnp.array([distance])])
-        return msd_part[:,None] + 4*noises[None,:]**2 # (max_lag+1,ndims)
-
+        msd = msd_function(times, params)
+        distance = msd_function(1e9, params)
+        msd_part = jnp.concatenate([msd, jnp.array([distance])])
+        return msd_part[:, None] + 4 * noises[None, :] ** 2  # (max_lag+1,ndims)
 
     @jax.jit
     def loss(x):
 
-        corrs_model = MSDfunc(x) # (max_lag+1,ndims)
+        corrs_model = MSDfunc(x)  # (max_lag+1,ndims)
 
-        diff = data_term - corrs_model # (max_lag+1,ndims)
+        diff = data_term - corrs_model  # (max_lag+1,ndims)
         # solve per-dim with explicit last axis to avoid JAX 1D solve deprecation
-        z = jax.scipy.linalg.solve(L, diff.T[..., None], lower=True).squeeze(-1) # (ndims, max_lag+1)
+        z = jax.scipy.linalg.solve(L, diff.T[..., None], lower=True).squeeze(
+            -1
+        )  # (ndims, max_lag+1)
         val = 0.5 * jnp.vecdot(z, z).sum()
         # if nan or inf return large value
         return jnp.where(jnp.isfinite(val), val, 1e10)
-    
+
     def gen_guess(guess):
         return np.exp(np.log(guess) + np.random.normal(scale=init_scale))
 
-    
     def sample_guess():
 
-        return np.log(
-            np.array(
-                [gen_guess(val) for val in init_guess
-                    
-                ]
-            )
-        )
+        return np.log(np.array([gen_guess(val) for val in init_guess]))
 
     loss_grad = jax.jit(jax.grad(loss))
 
@@ -431,7 +432,7 @@ def fit_msd(
                 jac=loss_grad,
                 callback=callback,
             )
-         
+
             results = {}
             results["LLH_trajectory"] = trajectory
             results["param_trajectory"] = paramtrajs
@@ -454,7 +455,6 @@ def fit_msd(
                 pbar.set_description(
                     f"Best llh: {np.max(LLHs) if len(LLHs)>0 else -np.inf:.2f}, nfailed: {nfailed+1}"
                 )
-                
 
                 nfailed += 1
                 continue
@@ -469,7 +469,7 @@ def fit_msd(
     results["data msd"] = data_term
     results["predicted msd"] = MSDfunc(res.x)
     results["msd_func"] = MSDfunc
-    
+
     best_ind = np.argmax(LLHs)
     results = fit_results[best_ind]
     res = results["result_obj"]

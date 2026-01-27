@@ -6,10 +6,13 @@ import numpy as np
 from functools import partial
 from tqdm import tqdm
 import utils
-from GPR import GPR
+from TwoLocusGPR.GPR import GPR
+
 
 @partial(jax.jit, static_argnames=["num_samples"])
-def prob_in_sphere_batch(mu: jnp.ndarray, sigma: jnp.ndarray, R: float, num_samples=10000) -> jnp.ndarray:
+def prob_in_sphere_batch(
+    mu: jnp.ndarray, sigma: jnp.ndarray, R: float, num_samples=10000
+) -> jnp.ndarray:
     """Monte Carlo probability a 3D diagonal Gaussian lies inside a sphere.
 
     Parameters
@@ -48,7 +51,14 @@ def prob_in_sphere_batch(mu: jnp.ndarray, sigma: jnp.ndarray, R: float, num_samp
     return v_estimate(mu.transpose(0, 2, 1), sigma.transpose(0, 2, 1), keys)
 
 
-def prob_in_sphere(mu: jnp.ndarray, var: jnp.ndarray, R: float, num_samples=10000, batch_size=10,verbose=True) -> jnp.ndarray:
+def prob_in_sphere(
+    mu: jnp.ndarray,
+    var: jnp.ndarray,
+    R: float,
+    num_samples=10000,
+    batch_size=10,
+    verbose=True,
+) -> jnp.ndarray:
     """Batch wrapper for probability mass of 3D diagonal Gaussians inside a sphere.
 
     Parameters
@@ -73,14 +83,14 @@ def prob_in_sphere(mu: jnp.ndarray, var: jnp.ndarray, R: float, num_samples=1000
     """
     means, vars = mu.transpose((1, 2, 0)), var.transpose((1, 2, 0))
     results = np.zeros((means.shape[0], means.shape[2]))
-    
+
     # Create batches
     batches = np.array_split(np.arange(means.shape[0]), len(means) // batch_size)
     if verbose:
         batches = tqdm(batches, desc="Computing probabilities", total=len(batches))
     else:
         batches = iter(batches)
-        
+
     # Process each batch
     for i in batches:
         inds = i
@@ -96,7 +106,11 @@ def prob_in_sphere(mu: jnp.ndarray, var: jnp.ndarray, R: float, num_samples=1000
 
 @partial(jax.jit, static_argnames=("num_samples", "percentiles"))
 def gaussian_radius_percentiles(
-    mu: jnp.ndarray, sigma2: jnp.ndarray, num_samples: int = 10000, percentiles=(5, 50, 95), seed: int = 0
+    mu: jnp.ndarray,
+    sigma2: jnp.ndarray,
+    num_samples: int = 10000,
+    percentiles=(5, 50, 95),
+    seed: int = 0,
 ) -> jnp.ndarray:
     """Monte Carlo percentiles of the radius for 3D diagonal Gaussians.
 
@@ -140,7 +154,9 @@ def gaussian_radius_percentiles(
     return jnp.moveaxis(radii_percentiles, 0, -1)
 
 
-def batched_radius_percentile_comp(mu : jnp.ndarray, vars: jnp.ndarray, batch_size: int=10, verbose: bool=True) -> jnp.ndarray:
+def batched_radius_percentile_comp(
+    mu: jnp.ndarray, vars: jnp.ndarray, batch_size: int = 10, verbose: bool = True
+) -> jnp.ndarray:
     """Compute percentiles of radius vectors in batches.
 
     Parameters
@@ -167,8 +183,7 @@ def batched_radius_percentile_comp(mu : jnp.ndarray, vars: jnp.ndarray, batch_si
         )
     else:
         mu_batches = iter(mu_batches)
-        
-        
+
     percentiles = np.zeros((len(mu), mu.shape[1], 3))
     count = 0
     for mu_batch, var_batch in zip(mu_batches, var_batches):
@@ -179,9 +194,15 @@ def batched_radius_percentile_comp(mu : jnp.ndarray, vars: jnp.ndarray, batch_si
     return percentiles
 
 
-
-
-def detect_anomalies(x: jnp.ndarray, pred_regressor: GPR, track: jnp.ndarray, min_size: int=1, max_size: int = 100, verbose: bool=True, threshold: float=0.05):
+def detect_anomalies(
+    x: jnp.ndarray,
+    pred_regressor: GPR,
+    track: jnp.ndarray,
+    min_size: int = 1,
+    max_size: int = 100,
+    verbose: bool = True,
+    threshold: float = 0.05,
+):
     """Detect anomalies in a multivariate time series using a GP regressor.
 
     Parameters
@@ -208,66 +229,87 @@ def detect_anomalies(x: jnp.ndarray, pred_regressor: GPR, track: jnp.ndarray, mi
     statistic : jnp.ndarray
         Test statistic per block size and time point, same shape as ``significant``.
     """
-    
-    
+
     ndims = track.shape[-1]
-    block_sizes = jnp.unique(jnp.logspace(jnp.log10(min_size),jnp.log10(max_size),10).astype(int))
+    block_sizes = jnp.unique(
+        jnp.logspace(jnp.log10(min_size), jnp.log10(max_size), 10).astype(int)
+    )
 
     times = pred_regressor.ts
 
     tracklength = len(track)
     all_inds = jnp.arange(tracklength)
 
-    noise = jnp.abs(x[-ndims :])  # last dim is noise
-    params = jnp.abs(x[: -ndims])  # all but last dim are parameters
+    noise = jnp.abs(x[-ndims:])  # last dim is noise
+    params = jnp.abs(x[:-ndims])  # all but last dim are parameters
     final_params = jnp.concatenate((jnp.tile(params, ndims), noise))
-    theta = final_params[: -ndims]  # all but last dim are parameters
-    
+    theta = final_params[:-ndims]  # all but last dim are parameters
+
     # Function to run anomaly detection for a specific block size
     def run_block(block_size):
-        start_inds = jnp.arange(0, tracklength-block_size+1)
-        in_block_inds = jnp.arange(block_size)[None,:] + start_inds[:,None]
-        out_of_block_inds = jax.vmap(lambda a,b: jnp.setdiff1d(a,b,assume_unique=True,size=tracklength - block_size), in_axes=(None,0))(all_inds, in_block_inds)
-        
+        start_inds = jnp.arange(0, tracklength - block_size + 1)
+        in_block_inds = jnp.arange(block_size)[None, :] + start_inds[:, None]
+        out_of_block_inds = jax.vmap(
+            lambda a, b: jnp.setdiff1d(
+                a, b, assume_unique=True, size=tracklength - block_size
+            ),
+            in_axes=(None, 0),
+        )(all_inds, in_block_inds)
+
         arr_times = jnp.array(times)
+
         @jax.jit
         def compute_pval(ind):
-            in_times = arr_times[ in_block_inds[ind]] # (nblocks,block_size)
-            out_times = arr_times[ out_of_block_inds[ind]] # (nblocks,block_size)
-            
+            in_times = arr_times[in_block_inds[ind]]  # (nblocks,block_size)
+            out_times = arr_times[out_of_block_inds[ind]]  # (nblocks,block_size)
 
-            in_block_data = track[ in_block_inds[ind]] # (nblocks,block_size,ndims)
-            out_block_data = track[out_of_block_inds[ind]] # (nblocks,tracklength-block_size,ndims)
+            in_block_data = track[in_block_inds[ind]]  # (nblocks,block_size,ndims)
+            out_block_data = track[
+                out_of_block_inds[ind]
+            ]  # (nblocks,tracklength-block_size,ndims)
 
             K_00 = pred_regressor.covbuilder(theta, in_times, in_times)
             K_01 = pred_regressor.covbuilder(theta, in_times, out_times)
             K_11 = pred_regressor.covbuilder(theta, out_times, out_times)
 
-            prediction_covmat = utils.get_mat_for_cholesky(in_block_data, K_00, jnp.array(noise))[2]
+            prediction_covmat = utils.get_mat_for_cholesky(
+                in_block_data, K_00, jnp.array(noise)
+            )[2]
 
-            mean_pred = utils.predict_mean_single(K_01, out_block_data, K_11, jnp.array(noise))
+            mean_pred = utils.predict_mean_single(
+                K_01, out_block_data, K_11, jnp.array(noise)
+            )
             cov_pred = utils.predict_cov_single(
-                            K_01, K_11, out_block_data, prediction_covmat, jnp.array(noise)
-                        )
+                K_01, K_11, out_block_data, prediction_covmat, jnp.array(noise)
+            )
 
-            residual = (in_block_data - mean_pred).T #(ndims, block_size)
-            
-            Ls = jnp.linalg.cholesky(cov_pred.transpose(2,0,1)) # (ndims, block_size, block_size)
-            whitened_res = jax.scipy.linalg.solve_triangular(Ls, residual, lower=True).T #(block_size, ndims)
+            residual = (in_block_data - mean_pred).T  # (ndims, block_size)
+
+            Ls = jnp.linalg.cholesky(
+                cov_pred.transpose(2, 0, 1)
+            )  # (ndims, block_size, block_size)
+            whitened_res = jax.scipy.linalg.solve_triangular(
+                Ls, residual, lower=True
+            ).T  # (block_size, ndims)
             statistic = jnp.nansum(whitened_res**2)
             ndeg = jnp.sum(~jnp.isnan(whitened_res))
             tail = jax.scipy.stats.chi2.cdf(statistic, ndeg)
             pval = jnp.min(jnp.array([tail, 1 - tail])) * 2  # two-sided
-            return statistic,pval
-        
+            return statistic, pval
+
         vmap_compute_pval = jax.vmap(compute_pval)
         batch_size = 200
-        ind_batches = np.array_split(jnp.arange(len(start_inds)), len(start_inds)//batch_size + 1)
+        ind_batches = np.array_split(
+            jnp.arange(len(start_inds)), len(start_inds) // batch_size + 1
+        )
         pval_res = np.zeros(len(start_inds))
         statistic_res = np.zeros(len(start_inds))
         for batch_inds in ind_batches:
-            statistic_res[batch_inds], pval_res[batch_inds] = vmap_compute_pval(batch_inds)
+            statistic_res[batch_inds], pval_res[batch_inds] = vmap_compute_pval(
+                batch_inds
+            )
         return statistic_res, pval_res
+
     results = []
     if verbose:
         iterator = tqdm(block_sizes)
@@ -277,15 +319,18 @@ def detect_anomalies(x: jnp.ndarray, pred_regressor: GPR, track: jnp.ndarray, mi
         statistic_res, pval_res = run_block(block_size)
         results.append((statistic_res, pval_res))
 
-
     n_tests = np.sum([len(res) for res in results])
     threshold = threshold / n_tests  # Bonferroni corrected threshold
-    significant = jnp.zeros((len(results),len(times)))
-    statistic = jnp.zeros((len(results),len(times)))
-    for block_ind, block_size, (statistic_res, pval_res) in zip(jnp.arange(len(block_sizes)), block_sizes, results):
-        start_inds = jnp.arange(0, tracklength-block_size+1)
+    significant = jnp.zeros((len(results), len(times)))
+    statistic = jnp.zeros((len(results), len(times)))
+    for block_ind, block_size, (statistic_res, pval_res) in zip(
+        jnp.arange(len(block_sizes)), block_sizes, results
+    ):
+        start_inds = jnp.arange(0, tracklength - block_size + 1)
         sig_inds = start_inds[pval_res < threshold]
         for ind in sig_inds:
-            significant = significant.at[block_ind, ind:ind+block_size].set(1)  
-            statistic = statistic.at[block_ind, ind:ind+block_size].set(statistic_res[ind])
+            significant = significant.at[block_ind, ind : ind + block_size].set(1)
+            statistic = statistic.at[block_ind, ind : ind + block_size].set(
+                statistic_res[ind]
+            )
     return significant, statistic

@@ -8,6 +8,7 @@ import jax.numpy as jnp
 
 
 def test_MSDfit():
+    np.random.seed(42)
     ntracks = 50
     noise = .5
     Gamma = 0.5

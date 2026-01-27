@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+setup.cfg
+TwoLocusGPR/Fit_MSD.py
+TwoLocusGPR/GPR.py
+TwoLocusGPR/MSD_functions.py
+TwoLocusGPR/Posterior_analysis.py
+TwoLocusGPR/__init__.py
+TwoLocusGPR/utils.py
+TwoLocusGPR.egg-info/PKG-INFO
+TwoLocusGPR.egg-info/SOURCES.txt
+TwoLocusGPR.egg-info/dependency_links.txt
+TwoLocusGPR.egg-info/requires.txt
+TwoLocusGPR.egg-info/top_level.txt
+tests/test_GPR.py
+tests/test_MSDfit.py
+tests/test_utils_and_posterior.py
