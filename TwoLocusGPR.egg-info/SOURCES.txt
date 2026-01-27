@@ -1,6 +1,5 @@
 README.md
 pyproject.toml
-setup.cfg
 TwoLocusGPR/Fit_MSD.py
 TwoLocusGPR/GPR.py
 TwoLocusGPR/MSD_functions.py

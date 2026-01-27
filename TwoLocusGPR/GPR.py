@@ -6,7 +6,8 @@ import numpy as np
 from tqdm.auto import tqdm
 from scipy.optimize import minimize, root_scalar
 
-import utils
+from . import utils
+
 
 @jax.jit
 def LLH(data: jnp.ndarray, noise: jnp.ndarray, covmat: jnp.ndarray) -> jnp.ndarray:
@@ -45,6 +46,7 @@ def LLH(data: jnp.ndarray, noise: jnp.ndarray, covmat: jnp.ndarray) -> jnp.ndarr
 
     return jnp.sum(llh) - jnp.sum(~nan_entries) * jnp.log(2 * jnp.pi) / 2
 
+
 @jax.jit
 def LLH_value_and_grad(data, noise, covmat, paramderivs):
     """Log-likelihood and gradient w.r.t. kernel parameters for one track.
@@ -69,7 +71,7 @@ def LLH_value_and_grad(data, noise, covmat, paramderivs):
         gradients stacked last.
     """
     n, d = data.shape
-    
+
     nan_entries, y, mats_for_cholesky = utils.get_mat_for_cholesky(data, covmat, noise)
 
     # Cholesky factor for each dim
@@ -129,8 +131,6 @@ vmap_LLH = jax.vmap(LLH, in_axes=(0, None, None))
 vmap_value_and_grad = jax.vmap(LLH_value_and_grad, in_axes=(0, None, None, 0))
 
 
-
-
 class GPR:
     """Gaussian Process regressor with MSD-parameterized covariance.
 
@@ -177,8 +177,7 @@ class GPR:
                 - vmap_msd(t1s[:, None] - t2s[None, :], params_per_dim)
             )
             return covmat  # (ndim,ndat,ndat)
-        
-        
+
         @jax.jit
         def Build_covmat_grad(theta, data, t1s, t2s):
             ndim = data.shape[-1]
@@ -238,14 +237,13 @@ class GPR:
         nan_mask = (
             jax.random.uniform(key, shape=(num_samples, len(self.ts), self.dim))
             < nanfrac
-            
         )
         nan_mask = jnp.where(nan_mask, jnp.nan, 1.0)
-        
+
         mu_iterator = mu * nan_mask
 
-        covmat = self.covbuilder(paramvec, self.ts, self.ts) # (ndim,ndat,ndat)
-        
+        covmat = self.covbuilder(paramvec, self.ts, self.ts)  # (ndim,ndat,ndat)
+
         if num_samples <= batch_size:
             batch_inds = [np.arange(num_samples)]
         else:
@@ -254,20 +252,22 @@ class GPR:
                 num_samples // batch_size + 1,
             )
         sample_list = []
-        
-        seeds = seed + jnp.arange(len(batch_inds))[:,None]+jnp.arange(self.dim)[None,:]*len(batch_inds)
-        
-        for seedval,inds in zip(seeds,batch_inds):
+
+        seeds = (
+            seed
+            + jnp.arange(len(batch_inds))[:, None]
+            + jnp.arange(self.dim)[None, :] * len(batch_inds)
+        )
+
+        for seedval, inds in zip(seeds, batch_inds):
             mus = mu_iterator[inds]
-            
-            
 
             samples = jax.vmap(utils.sample_gauss_cmat, in_axes=(2, 0, 0))(
                 mus,
                 covmat,
                 seedval,
-            ).transpose(1,2,0)
-            
+            ).transpose(1, 2, 0)
+
             sample_list.append(samples)
         samples = np.concatenate(sample_list, axis=0)
 
@@ -275,7 +275,7 @@ class GPR:
 
         key, subkey_noise, subkey_nan = jax.random.split(key, 3)
 
-        noisy_samples = samples + np.sqrt(2)*noise[None, None, :] * jax.random.normal(
+        noisy_samples = samples + np.sqrt(2) * noise[None, None, :] * jax.random.normal(
             subkey_noise, shape=samples.shape
         )
 
@@ -330,7 +330,7 @@ class GPR:
             mean_pred = utils.v_pred(prediction_kernel, batch, covmat, noise)
             # print diagnostics for numerical stability of the covariance
             print("")
-            
+
             cov_pred = utils.vmap_pred_cov(
                 prediction_kernel, covmat, batch, prediction_covmat, noise
             )
@@ -414,10 +414,9 @@ class GPR:
         """Total log-likelihood across a batch of tracks."""
         noise = theta[-self.dim :]  # last dim is noise
         paramvec = theta[: -self.dim]  # all but last dim are parameters
-        
+
         covmat = self.covbuilder(paramvec, self.ts, self.ts)
-        
-        
+
         data_batches = np.array_split(data, len(data) // batch_size + 1)
         llhs = 0
         if verbose:
@@ -428,12 +427,12 @@ class GPR:
             data_batches = iter(data_batches)
         for batch in data_batches:
             llhs += jnp.sum(vmap_LLH(batch, noise, covmat))
-        
-        
+
         return llhs
-    
+
     def get_objective(self, data):
         """Return a JIT-ed log-likelihood closure in log-parameter space."""
+
         @jax.jit
         def objective(x):
 
@@ -442,7 +441,7 @@ class GPR:
             final_params = jnp.concatenate((jnp.tile(params, self.dim), noise))
             llh = self.LLH(final_params, data)
 
-            return llh 
+            return llh
 
         return objective
 
@@ -482,15 +481,19 @@ class GPR:
         llhs : list[float]
             Log-likelihood trace corresponding to samples.
         """
-      
+
         objective = self.get_objective(data)
         freeze_mask = np.ones_like(initial_guess)
         for i in fixed_params:
             freeze_mask[i] = 0.0
         step_sizes = step_sizes * freeze_mask
-        @jax.jit 
-        def do_step(rng_key, current_position,objective_current):
-            proposal = current_position + jax.random.normal(rng_key, shape=current_position.shape) * step_sizes
+
+        @jax.jit
+        def do_step(rng_key, current_position, objective_current):
+            proposal = (
+                current_position
+                + jax.random.normal(rng_key, shape=current_position.shape) * step_sizes
+            )
             objective_proposal = objective(proposal)
             accept_prob = jnp.exp(objective_proposal - objective_current)
             rng_key, subkey = jax.random.split(rng_key)
@@ -499,8 +502,7 @@ class GPR:
             new_position = jnp.where(accept, proposal, current_position)
             new_objective = jnp.where(accept, objective_proposal, objective_current)
             return new_position, new_objective
-            
-            
+
         rng_key = jax.random.PRNGKey(seed)
         results = []
         llhs = []
@@ -517,8 +519,10 @@ class GPR:
             iterator = range(n_samples)
         for i in iterator:
             rng_key, sample_key = jax.random.split(rng_key)
-            state_position, state_objective = do_step(sample_key, state_position, state_objective)
+            state_position, state_objective = do_step(
+                sample_key, state_position, state_objective
+            )
             results.append(state_position)
             llhs.append(-state_objective)
         results = jnp.array(results)
-        return results,llhs
+        return results, llhs

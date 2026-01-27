@@ -5,8 +5,8 @@ import jax.numpy as jnp
 import numpy as np
 from functools import partial
 from tqdm import tqdm
-import utils
-from TwoLocusGPR.GPR import GPR
+from . import utils
+from .GPR import GPR
 
 
 @partial(jax.jit, static_argnames=["num_samples"])

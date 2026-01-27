@@ -11,7 +11,7 @@ from scipy.optimize import minimize
 from jax import grad, numpy as jnp
 from tqdm.auto import tqdm
 
-import utils
+from . import utils
 
 jax.config.update("jax_enable_x64", True)
 

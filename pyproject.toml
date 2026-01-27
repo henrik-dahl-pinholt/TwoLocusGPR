@@ -1,3 +1,34 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "TwoLocusGPR"
+version = "0.1.0"
+description = "Gaussian-process regression toolkit for two-locus trajectories"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Henrik Dahl-Pinholt" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "jax>=0.4.20",
+    "jaxlib>=0.4.20",
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "matplotlib>=3.7",
+    "tqdm>=4.65",
+]
+
+[project.urls]
+Homepage = "https://github.com/henrik-dahl-pinholt/TwoLocusGPR"
+Issues = "https://github.com/henrik-dahl-pinholt/TwoLocusGPR/issues"
+
+[tool.setuptools.packages.find]
+include = ["TwoLocusGPR*"]
