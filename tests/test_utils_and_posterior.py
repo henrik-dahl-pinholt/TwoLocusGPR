@@ -1,6 +1,7 @@
 import numpy as np
 import jax.numpy as jnp
-from TwoLocusGPR import Posterior_analysis as pa, utils
+import utils
+import Posterior_analysis as pa
 
 
 def test_get_mat_for_cholesky_masks_nans():

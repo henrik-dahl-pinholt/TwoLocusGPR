@@ -333,4 +333,4 @@ def detect_anomalies(
             statistic = statistic.at[block_ind, ind : ind + block_size].set(
                 statistic_res[ind]
             )
-    return significant, statistic
+    return significant, statistic,block_sizes
