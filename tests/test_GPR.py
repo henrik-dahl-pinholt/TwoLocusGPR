@@ -26,7 +26,7 @@ def test_predictions():
     downsampled_noisy_dat = noisy_dat[:, ::fine_factor]
 
     # perform posterior prediction
-    pred_regressor = GPR.GPR(downsampled_times, MSD_functions.Rouse_MSD, ndims)
+    pred_regressor = GPR(downsampled_times, MSD_functions.Rouse_MSD, ndims)
     theta = np.array([Gamma, J] + noise)
     p_mean, p_var = pred_regressor.Predict(theta, times, downsampled_noisy_dat)
     z_scores = ((p_mean - true_dat) / np.sqrt(p_var)).reshape(

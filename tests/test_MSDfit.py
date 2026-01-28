@@ -1,9 +1,7 @@
 # load package modules (TwoLocusGPR now ships as a proper package)
 
-from TwoLocusGPR import GPR, MSD_functions, utils, Fit_MSD
+from TwoLocusGPR import GPR, MSD_functions, Fit_MSD
 import numpy as np
-import jax
-import jax.numpy as jnp
 
 
 def test_MSDfit():
